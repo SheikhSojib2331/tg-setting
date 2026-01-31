@@ -1,0 +1,5 @@
+flask
+telethon
+pymongo
+flask_cors
+gunicorn
