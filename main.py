@@ -85,8 +85,10 @@ async def verify():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
+
+# main.py এর একদম শেষে app.run এর জায়গায় এটি দিন
 if __name__ == "__main__":
-    # Render বা Koyeb এর জন্য পোর্ট সেটআপ
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    # সরাসরি app.run এর বদলে async সাপোর্ট নিশ্চিত করতে
+    app.run(host='0.0.0.0', port=port, debug=False)
 
