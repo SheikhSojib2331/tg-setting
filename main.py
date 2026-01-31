@@ -9,7 +9,7 @@ from pymongo import MongoClient
 # --- কনফিগারেশন ---
 API_ID = 34278231 # আপনার আইডি
 API_HASH = '49cf7ab41e479d21a93c150a77c0cf85' # আপনার হ্যাশ
-BOT_TOKEN = 'এখানে_আপনার_বট_টোকেন_দিন' 
+BOT_TOKEN = '7626824489:AAFByXbvcTLUvoavK-CMBKOw9DNf3GpNgQE' 
 MONGO_URI = "mongodb+srv://jakaria5002a:jakaria5002a@cluster0.j2rvdkb.mongodb.net/" # আপনার ডাটাবেজ
 
 app = Flask(__name__)
