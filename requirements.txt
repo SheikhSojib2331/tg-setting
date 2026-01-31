@@ -1,5 +1,0 @@
-flask[async]
-telethon
-pymongo
-flask_cors
-gunicorn
