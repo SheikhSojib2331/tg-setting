@@ -1,3 +1,7 @@
+# main.py এর একদম ওপরে এই লাইনটি যোগ করুন
+import asyncio
+from flask import Flask, request, jsonify
+# বাকি ইম্পোর্টগুলো আগের মতোই থাকবে...
 import os
 import asyncio
 from flask import Flask, request, jsonify
@@ -85,3 +89,4 @@ if __name__ == "__main__":
     # Render বা Koyeb এর জন্য পোর্ট সেটআপ
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
